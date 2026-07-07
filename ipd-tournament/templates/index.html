@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPD Tournament Arena — 重复囚徒困境</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.1/dist/socket.io.min.js"></script>
+<style>
+/* ===== Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f0f1a;
+  --surface: #1a1a2e;
+  --card: #16213e;
+  --border: #2a2a4a;
+  --text: #e0e0f0;
+  --dim: #8888aa;
+  --accent: #00d4aa;
+  --accent2: #4a9eff;
+  --danger: #ff6b6b;
+  --warn: #ffd93d;
+  --radius: 8px;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh; display: flex;
+}
+/* ===== Layout ===== */
+.sidebar {
+  width: 340px; min-width: 340px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 16px; overflow-y: auto;
+  height: 100vh; position: sticky; top: 0;
+}
+.main {
+  flex: 1; padding: 20px; overflow-y: auto; height: 100vh;
+}
+/* ===== Header ===== */
+.header {
+  text-align: center; padding-bottom: 16px;
+  border-bottom: 1px solid var(--border); margin-bottom: 16px;
+}
+.header h1 { font-size: 20px; color: var(--accent); }
+.header p { font-size: 12px; color: var(--dim); margin-top: 2px; }
+/* ===== Sections ===== */
+.section { margin-bottom: 16px; }
+.section-title {
+  font-size: 13px; font-weight: 600; color: var(--accent2);
+  margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+/* ===== Mode Tabs ===== */
+.mode-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.mode-tab {
+  flex: 1; padding: 8px; text-align: center; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--card); color: var(--dim); font-size: 13px; transition: 0.2s;
+}
+.mode-tab:hover { border-color: var(--accent2); color: var(--text); }
+.mode-tab.active { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+/* ===== Checkboxes ===== */
+.strategy-list { max-height: 260px; overflow-y: auto; }
+.strategy-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; cursor: pointer; border-radius: 4px;
+  font-size: 13px; transition: 0.15s;
+}
+.strategy-item:hover { background: rgba(255,255,255,0.05); }
+.strategy-item input { accent-color: var(--accent); cursor: pointer; }
+.strategy-actions { display: flex; gap: 4px; margin-top: 6px; }
+.strategy-actions button {
+  flex: 1; padding: 3px 0; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--card); color: var(--dim);
+}
+.strategy-actions button:hover { color: var(--text); border-color: var(--accent2); }
+/* ===== Sliders ===== */
+.param-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.param-row label { font-size: 12px; color: var(--dim); min-width: 45px; }
+.param-row input[type="range"] {
+  flex: 1; accent-color: var(--accent); cursor: pointer;
+}
+.param-row .value { font-size: 12px; color: var(--text); min-width: 40px; text-align: right; }
+/* ===== Custom Strategy ===== */
+.custom-area textarea {
+  width: 100%; height: 140px; background: #0a0a15;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  color: #a8d8ea; font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px; padding: 8px; resize: vertical;
+  line-height: 1.5;
+}
+.custom-area textarea:focus { outline: none; border-color: var(--accent2); }
+.custom-footer { display: flex; gap: 6px; margin-top: 6px; }
+.custom-footer input {
+  flex: 1; background: #0a0a15; border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); padding: 5px 8px; font-size: 12px;
+}
+.custom-footer input:focus { outline: none; border-color: var(--accent2); }
+.btn-add {
+  padding: 5px 12px; background: var(--accent2); color: #fff;
+  border: none; border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+.btn-add:hover { opacity: 0.85; }
+.custom-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.custom-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(74,158,255,0.15); color: var(--accent2);
+  padding: 2px 8px; border-radius: 10px; font-size: 11px;
+}
+.custom-tag .remove { cursor: pointer; opacity: 0.6; }
+.custom-tag .remove:hover { opacity: 1; }
+/* ===== Start Button ===== */
+.btn-start {
+  width: 100%; padding: 12px;
+  background: var(--accent); color: #000; font-weight: 700;
+  border: none; border-radius: var(--radius); cursor: pointer;
+  font-size: 15px; letter-spacing: 1px; transition: 0.2s;
+}
+.btn-start:hover { opacity: 0.85; transform: translateY(-1px); }
+.btn-start:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+/* ===== Status Bar ===== */
+.status-bar {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px; margin-bottom: 16px;
+  font-size: 13px; display: flex; align-items: center; gap: 8px;
+}
+.status-bar .dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--dim);
+  flex-shrink: 0;
+}
+.status-bar .dot.running { background: var(--warn); animation: pulse 0.8s infinite; }
+.status-bar .dot.done { background: var(--accent); }
+@keyframes pulse { 50% { opacity: 0.4; } }
+/* ===== Main content tabs ===== */
+.content-tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 1px solid var(--border); }
+.content-tab {
+  padding: 10px 20px; cursor: pointer; font-size: 13px; font-weight: 500;
+  color: var(--dim); border-bottom: 2px solid transparent; transition: 0.2s;
+}
+.content-tab:hover { color: var(--text); }
+.content-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.content-panel { display: none; padding-top: 16px; }
+.content-panel.active { display: block; }
+/* ===== Chart ===== */
+.chart-container {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+}
+.chart-container canvas { max-height: 300px; max-width: 100%; }
+/* ===== Table ===== */
+.table-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 16px;
+}
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  background: rgba(255,255,255,0.03); padding: 10px 12px;
+  text-align: left; font-weight: 600; color: var(--dim);
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+tbody td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+tbody tr:hover { background: rgba(255,255,255,0.02); }
+tbody tr:last-child td { border-bottom: none; }
+td.rank { color: var(--accent2); font-weight: 600; }
+td.score { color: var(--accent); font-weight: 600; }
+td.coop { color: var(--warn); }
+/* ===== Match Log ===== */
+.log-container {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); max-height: 200px; overflow-y: auto;
+  font-size: 11px; padding: 8px;
+}
+.log-entry {
+  padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.02);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+.log-entry:last-child { border-bottom: none; }
+.log-entry .winner { color: var(--accent); }
+.log-entry .loser { color: var(--danger); }
+.log-entry .tie { color: var(--warn); }
+/* ===== Match Detail ===== */
+.detail-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px; margin-bottom: 16px;
+  font-size: 12px; display: none;
+}
+.detail-panel.visible { display: block; }
+.detail-grid { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
+.detail-col { flex: 1; min-width: 200px; }
+.detail-col h4 { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+.detail-col .bar-bg {
+  background: rgba(255,255,255,0.05); border-radius: 3px; height: 20px;
+  position: relative; overflow: hidden; margin-bottom: 4px;
+}
+.detail-col .bar-fill {
+  height: 100%; border-radius: 3px; transition: width 0.3s;
+}
+.bar-coop { background: var(--accent); }
+.bar-defect { background: var(--danger); }
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* ===== Ecology table ===== */
+.ecology-pop { text-align: right; font-weight: 600; }
+.ecology-bar {
+  display: inline-block; height: 14px; border-radius: 3px;
+  vertical-align: middle; margin-right: 6px; min-width: 2px;
+}
+/* ===== Responsive ===== */
+@media (max-width: 860px) {
+  body { flex-direction: column; }
+  .sidebar { width: 100%; min-width: unset; height: auto; position: static;
+    border-right: none; border-bottom: 1px solid var(--border); }
+  .main { height: auto; }
+}
+/* ===== Help Text ===== */
+.help-text { font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<!-- ============ SIDEBAR ============ -->
+<div class="sidebar">
+  <div class="header">
+    <h1>🏟️ IPD Arena</h1>
+    <p>重复囚徒困境 · 基于《自私的基因》</p>
+  </div>
+
+  <!-- Mode -->
+  <div class="section">
+    <div class="section-title">🎮 模式</div>
+    <div class="mode-tabs">
+      <div class="mode-tab active" data-mode="tournament">循环锦标赛</div>
+      <div class="mode-tab" data-mode="ecology">种群生态</div>
+    </div>
+  </div>
+
+  <!-- Strategies -->
+  <div class="section">
+    <div class="section-title">📋 选择策略</div>
+    <div class="strategy-list" id="strategyList"></div>
+    <div class="strategy-actions">
+      <button onclick="toggleAll(true)">全选</button>
+      <button onclick="toggleAll(false)">清空</button>
+      <button onclick="toggleInvert()">反选</button>
+    </div>
+  </div>
+
+  <!-- Parameters -->
+  <div class="section">
+    <div class="section-title">⚙️ 参数</div>
+    <div class="param-row">
+      <label>轮数</label>
+      <input type="range" id="paramRounds" min="20" max="500" value="200" step="10"
+             oninput="document.getElementById('roundsVal').textContent=this.value">
+      <span class="value" id="roundsVal">200</span>
+    </div>
+    <div class="param-row">
+      <label>噪音</label>
+      <input type="range" id="paramNoise" min="0" max="30" value="0" step="1"
+             oninput="document.getElementById('noiseVal').textContent=this.value+'%'">
+      <span class="value" id="noiseVal">0%</span>
+    </div>
+    <div class="param-row" id="genRow">
+      <label>代数</label>
+      <input type="range" id="paramGens" min="5" max="100" value="30" step="1"
+             oninput="document.getElementById('gensVal').textContent=this.value">
+      <span class="value" id="gensVal">30</span>
+    </div>
+  </div>
+
+  <!-- Custom Strategy -->
+  <div class="section">
+    <div class="section-title">✏️ 自定义策略</div>
+    <div class="custom-area">
+      <textarea id="customCode" spellcheck="false">def move(my_history, opp_history):
+    """my_history / opp_history: list[Move]
+    返回: Move.COOPERATE 或 Move.DEFECT
+    可用: random 模块
+    """
+    if not opp_history:
+        return Move.COOPERATE
+
+    defects = sum(1 for m in opp_history if m == Move.DEFECT)
+    if defects > len(opp_history) * 0.3:
+        return Move.DEFECT
+
+    return opp_history[-1]</textarea>
+    </div>
+    <div class="custom-footer">
+      <input id="customName" placeholder="策略名称" value="MyStrategy">
+      <button class="btn-add" onclick="addCustomStrategy()">+ 添加</button>
+    </div>
+    <div id="customTagContainer" class="custom-tags"></div>
+  </div>
+
+  <!-- Start -->
+  <button class="btn-start" id="btnStart" onclick="startTournament()">🚀 开始锦标赛</button>
+  <div class="help-text" id="startHelp">选择至少 2 个策略后点击开始</div>
+</div>
+
+<!-- ============ MAIN ============ -->
+<div class="main">
+  <div class="status-bar">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">就绪 — 选择策略并开始</span>
+  </div>
+
+  <!-- Content Tabs -->
+  <div class="content-tabs">
+    <div class="content-tab active" data-panel="results">📊 结果</div>
+    <div class="content-tab" data-panel="matchlog">📝 比赛记录</div>
+    <div class="content-tab" data-panel="detail">🔍 详情</div>
+  </div>
+
+  <!-- Panel: Results -->
+  <div class="content-panel active" id="panel-results">
+    <div class="chart-container">
+      <canvas id="barChart" style="display:none;"></canvas>
+      <canvas id="lineChart" style="display:none;"></canvas>
+    </div>
+    <div class="table-wrap" id="leaderboardWrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>策略</th><th>总分</th><th>均分</th>
+          <th>胜场</th><th>胜率</th><th>合作率</th>
+        </tr></thead>
+        <tbody id="leaderboardBody">
+          <tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">
+            等待比赛开始…
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Panel: Match Log -->
+  <div class="content-panel" id="panel-matchlog">
+    <div class="log-container" id="logContainer">
+      <div style="color:var(--dim);padding:8px;">比赛记录将在此显示</div>
+    </div>
+  </div>
+
+  <!-- Panel: Detail -->
+  <div class="content-panel" id="panel-detail">
+    <div class="detail-panel" id="detailPanel">
+      <h3 id="detailTitle">比赛详情</h3>
+      <div id="detailCoopBars" class="detail-grid"></div>
+      <div style="margin-top:10px;">
+        <h4 style="font-size:11px;color:var(--dim);margin-bottom:4px;">前 50 回合</h4>
+        <div id="detailMoves" style="font-family:monospace;font-size:11px;display:flex;gap:4px;flex-wrap:wrap;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// 配置
+// =============================================================================
+const SOCKET = io();
+
+const COLORS = [
+  '#00d4aa', '#4a9eff', '#ff6b6b', '#ffd93d', '#c084fc',
+  '#fb923c', '#34d399', '#f472b6', '#22d3ee', '#a78bfa',
+  '#fbbf24', '#60a5fa', '#f87171', '#86efac',
+];
+
+const STRATEGIES = [
+  {id:'AlwaysCooperate', label:'🤝 Always Cooperate'},
+  {id:'AlwaysDefect',   label:'🗡️ Always Defect'},
+  {id:'TitForTat',      label:'🔄 Tit for Tat'},
+  {id:'TitForTwoTats',  label:'😊 Tit for Two Tats'},
+  {id:'Friedman',       label:'❄️ Friedman'},
+  {id:'Joss',           label:'🦊 Joss'},
+  {id:'GenerousTFT',    label:'💝 Generous TFT'},
+  {id:'Random',         label:'🎲 Random'},
+  {id:'SuspiciousTFT',  label:'🤨 Suspicious TFT'},
+];
+
+// =============================================================================
+// 状态
+// =============================================================================
+let currentMode = 'tournament';
+let customStrategies = [];    // {name, code}
+let tournamentData = { ranking: [] };
+let ecologyData = { labels: [], datasets: {} };
+let matchLog = [];
+let matchDetails = [];
+
+// =============================================================================
+// 初始化
+// =============================================================================
+function init() {
+  renderStrategyList();
+  initBarChart();
+  setupSocketListeners();
+  setupModeTabs();
+  setupContentTabs();
+  updateStartButton();
+}
+
+// =============================================================================
+// 策略列表渲染
+// =============================================================================
+function renderStrategyList() {
+  const el = document.getElementById('strategyList');
+  el.innerHTML = STRATEGIES.map(s => `
+    <label class="strategy-item">
+      <input type="checkbox" class="strategy-cb" value="${s.id}" checked
+             onchange="updateStartButton()">
+      ${s.label}
+    </label>
+  `).join('');
+}
+
+function getSelectedStrategyIds() {
+  return Array.from(document.querySelectorAll('.strategy-cb:checked'))
+    .map(cb => cb.value);
+}
+
+function toggleAll(checked) {
+  document.querySelectorAll('.strategy-cb').forEach(cb => cb.checked = checked);
+  updateStartButton();
+}
+function toggleInvert() {
+  document.querySelectorAll('.strategy-cb').forEach(cb => cb.checked = !cb.checked);
+  updateStartButton();
+}
+
+// =============================================================================
+// 自定义策略
+// =============================================================================
+function addCustomStrategy() {
+  const name = document.getElementById('customName').value.trim() || 'MyStrategy';
+  const code = document.getElementById('customCode').value;
+  if (customStrategies.some(c => c.name === name)) {
+    setStatus(`策略 "${name}" 已存在`, 'warn');
+    return;
+  }
+  customStrategies.push({name, code});
+  renderCustomTags();
+  updateStartButton();
+  setStatus(`已添加自定义策略: ${name}`, 'done');
+}
+
+function removeCustomStrategy(name) {
+  customStrategies = customStrategies.filter(c => c.name !== name);
+  renderCustomTags();
+  updateStartButton();
+}
+
+function renderCustomTags() {
+  const el = document.getElementById('customTagContainer');
+  if (customStrategies.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = customStrategies.map(c =>
+    `<span class="custom-tag">✏️ ${c.name} <span class="remove" onclick="removeCustomStrategy('${c.name}')">✕</span></span>`
+  ).join('');
+}
+
+// =============================================================================
+// 模式切换
+// =============================================================================
+function setupModeTabs() {
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentMode = tab.dataset.mode;
+      document.getElementById('genRow').style.display =
+        currentMode === 'ecology' ? 'flex' : 'none';
+      document.getElementById('btnStart').textContent =
+        currentMode === 'ecology' ? '🌿 开始生态模拟' : '🚀 开始锦标赛';
+      document.getElementById('startHelp').textContent =
+        currentMode === 'ecology' ? '选择至少 2 个策略后开始' : '选择至少 2 个策略后开始';
+    });
+  });
+}
+
+// =============================================================================
+// 内容标签切换
+// =============================================================================
+function setupContentTabs() {
+  document.querySelectorAll('.content-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.content-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+    });
+  });
+}
+
+// =============================================================================
+// 开始按钮
+// =============================================================================
+function updateStartButton() {
+  const n = getSelectedStrategyIds().length + customStrategies.length;
+  document.getElementById('btnStart').disabled = (n < 2);
+}
+function setRunning(running) {
+  document.getElementById('btnStart').disabled = running;
+  document.getElementById('btnStart').textContent =
+    running ? '⏳ 运行中…' : (currentMode === 'ecology' ? '🌿 开始生态模拟' : '🚀 开始锦标赛');
+  const dot = document.getElementById('statusDot');
+  dot.className = 'dot' + (running ? ' running' : '');
+}
+function setStatus(msg, type) {
+  const el = document.getElementById('statusText');
+  el.textContent = msg;
+  const dot = document.getElementById('statusDot');
+  if (type === 'done') dot.className = 'dot done';
+  else if (type === 'warn') dot.className = 'dot';
+  else dot.className = 'dot running';
+}
+
+function resetAll() {
+  matchLog = [];
+  matchDetails = [];
+  document.getElementById('logContainer').innerHTML =
+    '<div style="color:var(--dim);padding:8px;">比赛记录将在此显示</div>';
+  document.getElementById('leaderboardBody').innerHTML =
+    '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">等待…</td></tr>';
+  document.getElementById('detailPanel').classList.remove('visible');
+  ecologyData = { labels: [], datasets: {} };
+
+  // 根据模式切换表头
+  const headerRow = document.querySelector('#leaderboardWrap thead tr');
+  if (currentMode === 'ecology') {
+    headerRow.innerHTML = `
+      <th>#</th><th>物种</th><th colspan="5">种群数量</th>
+    `;
+  } else {
+    headerRow.innerHTML = `
+      <th>#</th><th>策略</th><th>总分</th><th>均分</th>
+      <th>胜场</th><th>胜率</th><th>合作率</th>
+    `;
+  }
+}
+
+function startTournament() {
+  const ids = getSelectedStrategyIds();
+  const total = ids.length + customStrategies.length;
+  if (total < 2) return;
+
+  resetAll();
+
+  if (currentMode === 'tournament') {
+    initBarChart();
+  } else {
+    initLineChart();
+  }
+
+  setRunning(true);
+  setStatus(`🏟️ 发送请求…`, '');
+
+  if (currentMode === 'tournament') {
+    SOCKET.emit('start_tournament', {
+      strategies: ids,
+      custom_strategies: customStrategies,
+      rounds: parseInt(document.getElementById('paramRounds').value),
+      noise: parseInt(document.getElementById('paramNoise').value) / 100,
+    });
+  } else {
+    SOCKET.emit('start_ecology', {
+      strategies: ids,
+      rounds: parseInt(document.getElementById('paramRounds').value),
+      noise: parseInt(document.getElementById('paramNoise').value) / 100,
+      generations: parseInt(document.getElementById('paramGens').value),
+    });
+  }
+}
+
+// =============================================================================
+// Socket.IO 监听
+// =============================================================================
+function setupSocketListeners() {
+  SOCKET.on('status', (d) => setStatus(d.message, ''));
+  SOCKET.on('error', (d) => { setStatus('❌ ' + d.message, 'warn'); setRunning(false); });
+
+  SOCKET.on('phase', (d) => {
+    // 无操作 — 图表已由 startTournament() 初始化
+  });
+
+  // === 锦标赛事件 ===
+  SOCKET.on('match_start', (d) => {
+    setStatus(`🏟️ 比赛 ${d.match_id}/${d.total}: ${d.p1} vs ${d.p2}`, '');
+  });
+
+  SOCKET.on('match_result', (d) => {
+    // 日志
+    const cls = d.winner === '平局' ? 'tie' : 'winner';
+    const html = `<div class="log-entry">
+      <span>#${d.match_id}</span>
+      <span style="color:var(--accent2)">${d.p1}</span>
+      <span>${d.score1} - ${d.score2}</span>
+      <span style="color:var(--accent2)">${d.p2}</span>
+      <span>| 合作率 ${d.coop1.toFixed(1)} / ${d.coop2.toFixed(1)}</span>
+      <span class="${cls}">${d.winner === '平局' ? '⚖️ 平局' : '✓ ' + d.winner}</span>
+    </div>`;
+    const log = document.getElementById('logContainer');
+    log.insertAdjacentHTML('beforeend', html);
+    log.scrollTop = log.scrollHeight;
+
+    matchLog.push(d);
+  });
+
+  SOCKET.on('match_detail', (d) => {
+    matchDetails.push(d);
+    updateDetailPanel();
+  });
+
+  SOCKET.on('leaderboard', (d) => {
+    tournamentData.ranking = d.ranking;
+    renderLeaderboard(d.ranking);
+    updateBarChart(d.ranking);
+  });
+
+  SOCKET.on('tournament_done', () => {
+    setRunning(false);
+    setStatus('✅ 锦标赛完成！', 'done');
+    document.getElementById('statusDot').className = 'dot done';
+  });
+
+  // === 生态事件 ===
+  SOCKET.on('ecology_update', (d) => {
+    console.log('ecology_update:', d.generation, d.populations);
+    setStatus('第 ' + d.generation + ' 代', '');
+    updateLineChart(d);
+  });
+
+  SOCKET.on('ecology_done', (d) => {
+    console.log('ecology_done:', d);
+    setRunning(false);
+    setStatus('生态模拟完成！', 'done');
+    document.getElementById('statusDot').className = 'dot done';
+  });
+}
+
+// =============================================================================
+// 详情面板
+// =============================================================================
+function updateDetailPanel() {
+  const last = matchDetails[matchDetails.length - 1];
+  if (!last) return;
+  const panel = document.getElementById('detailPanel');
+  panel.classList.add('visible');
+  document.getElementById('detailTitle').textContent =
+    `比赛详情: ${last.p1} vs ${last.p2}`;
+
+  // 合作率柱
+  const grid = document.getElementById('detailCoopBars');
+  grid.innerHTML = '';
+  [last.p1, last.p2].forEach((name, idx) => {
+    const coopRate = idx === 0 ? last.p1_coop_rate : last.p2_coop_rate;
+    const defectRate = 1 - coopRate;
+    const div = document.createElement('div');
+    div.className = 'detail-col';
+    div.innerHTML = `
+      <h4>${name}</h4>
+      <div style="display:flex;gap:2px;height:20px;">
+        <div class="bar-fill bar-coop" style="width:${(coopRate*100).toFixed(0)}%"></div>
+        <div class="bar-fill bar-defect" style="width:${(defectRate*100).toFixed(0)}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);">
+        <span>合作 ${(coopRate*100).toFixed(0)}%</span>
+        <span>背叛 ${(defectRate*100).toFixed(0)}%</span>
+      </div>
+    `;
+    grid.appendChild(div);
+  });
+
+  // 前50回合
+  const movesDiv = document.getElementById('detailMoves');
+  const hist = last.history || [];
+  const preview = hist.slice(0, 50);
+  movesDiv.innerHTML = preview.map((m, i) => {
+    const c1 = m[0] === 'C' ? 'var(--accent)' : 'var(--danger)';
+    const c2 = m[1] === 'C' ? 'var(--accent)' : 'var(--danger)';
+    return `<span title="回合${i+1}: ${m[0]} vs ${m[1]} (${m[2]},${m[3]})"
+                 style="color:${c1}">${m[0]}</span>
+            <span style="color:var(--dim)">/</span>
+            <span style="color:${c2}">${m[1]}</span>
+            ${(i+1) % 10 === 0 ? '<br>' : ' '}`;
+  }).join('');
+}
+
+// =============================================================================
+// 排行榜渲染
+// =============================================================================
+function renderLeaderboard(ranking) {
+  const tbody = document.getElementById('leaderboardBody');
+  if (!ranking || ranking.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = ranking.map((r, i) => `
+    <tr>
+      <td class="rank">#${r.rank}</td>
+      <td style="color:${COLORS[i % COLORS.length]}">${r.name}</td>
+      <td class="score">${r.score}</td>
+      <td>${r.avg}</td>
+      <td>${r.wins}/${r.matches}</td>
+      <td>${(r.win_rate * 100).toFixed(0)}%</td>
+      <td class="coop">${(r.coop_rate * 100).toFixed(0)}%</td>
+    </tr>
+  `).join('');
+}
+
+// =============================================================================
+// Chart.js — 独立双图管理
+// =============================================================================
+let barChartInstance = null;
+let lineChartInstance = null;
+
+function destroyBar() {
+  if (barChartInstance) { barChartInstance.destroy(); barChartInstance = null; }
+  document.getElementById('barChart').style.display = 'none';
+}
+function destroyLine() {
+  if (lineChartInstance) { lineChartInstance.destroy(); lineChartInstance = null; }
+  document.getElementById('lineChart').style.display = 'none';
+}
+
+function initBarChart() {
+  destroyBar();
+  destroyLine();
+  const canvas = document.getElementById('barChart');
+  canvas.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  barChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      indexAxis: 'y',
+      animation: { duration: 200 },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `\u603B\u5206: ${ctx.parsed.x}` } },
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa' } },
+        y: { grid: { display: false }, ticks: { color: '#8888aa', font: { size: 10 } } },
+      }
+    }
+  });
+}
+
+function initLineChart() {
+  destroyLine();
+  destroyBar();
+  const canvas = document.getElementById('lineChart');
+  canvas.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  lineChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      animation: { duration: 200 },
+      plugins: {
+        legend: { labels: { color: '#8888aa', font: { size: 11 } } },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#8888aa', maxTicksLimit: 20 },
+          title: { display: true, text: '\u4EE3\u6570', color: '#8888aa' },
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#8888aa' },
+          title: { display: true, text: '\u79CD\u7FA4\u6570\u91CF', color: '#8888aa' },
+          beginAtZero: true,
+        },
+      }
+    }
+  });
+}
+
+function updateBarChart(ranking) {
+  if (!barChartInstance || !ranking || ranking.length === 0) return;
+  try {
+    const labels = ranking.map(r => r.name);
+    const scores = ranking.map(r => r.score);
+    const colors = ranking.map((_, i) => COLORS[i % COLORS.length]);
+    barChartInstance.data = { labels, datasets: [{
+      data: scores,
+      backgroundColor: colors.map(c => c + '80'),
+      borderColor: colors,
+      borderWidth: 1, borderRadius: 3,
+    }]};
+    barChartInstance.update();
+  } catch (e) { console.error('barChart error:', e); }
+}
+
+function updateLineChart(d) {
+  try {
+    if (!lineChartInstance) initLineChart();
+    const gen = d.generation;
+    const pops = d.populations;
+
+    Object.entries(pops).forEach(([name, pop]) => {
+      let ds = lineChartInstance.data.datasets.find(ds => ds.label === name);
+      if (!ds) {
+        const color = COLORS[lineChartInstance.data.datasets.length % COLORS.length];
+        ds = {
+          label: name, data: [],
+          borderColor: color, backgroundColor: color + '20',
+          fill: true, tension: 0.3,
+          pointRadius: 3, pointHoverRadius: 5,
+        };
+        lineChartInstance.data.datasets.push(ds);
+        for (let j = 0; j < lineChartInstance.data.labels.length; j++) ds.data.push(null);
+      }
+      ds.data.push(pop);
+    });
+
+    lineChartInstance.data.datasets.forEach(ds => {
+      while (ds.data.length < gen) ds.data.push(null);
+    });
+    lineChartInstance.data.labels.push(`#${gen}`);
+    lineChartInstance.update();
+
+    updateEcologyTable(d);
+  } catch (e) { console.error('lineChart error:', e); }
+}
+
+function updateEcologyTable(d) {
+  try {
+    const tbody = document.getElementById('leaderboardBody');
+    if (!tbody) return;
+    const sorted = Object.entries(d.populations)
+      .sort((a, b) => b[1] - a[1]);
+    const maxPop = Math.max(...sorted.map(([, p]) => p), 1);
+    tbody.innerHTML = sorted.map(([name, pop], i) => {
+      const w = (pop / maxPop * 100).toFixed(0);
+      const color = COLORS[i % COLORS.length];
+      return '<tr><td class="rank">#' + (i + 1) + '</td>'
+        + '<td style="color:' + color + '">' + name + '</td>'
+        + '<td class="ecology-pop" colspan="5">'
+        + '<span class="ecology-bar" style="width:' + w + '%;background:' + color + '"> </span>'
+        + pop + '</td></tr>';
+    }).join('');
+  } catch (e) { console.error('ecologyTable error:', e); }
+}
+
+// =============================================================================
+// 启动
+// =============================================================================
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
