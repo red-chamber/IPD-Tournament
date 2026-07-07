@@ -57,7 +57,7 @@ pip install flask flask-socketio eventlet
 python app.py
 ```
 
-打开浏览器访问 **http://127.0.0.1:5000**。
+打开浏览器访问 http://127.0.0.1:5000
 
 ## 关闭
 
